@@ -24,9 +24,11 @@ type Command struct {
 type CommandType int
 
 const (
-	MOVE       = 0
-	CONNECT    = 1
-	DISCONNECT = 2
+	MOVE         = 0
+	CONNECT      = 1
+	DISCONNECT   = 2
+	SPAWN_LOCAL  = 3
+	SPAWN_REMOTE = 4
 )
 
 type Players map[int]*net.UDPAddr
@@ -71,13 +73,39 @@ func main() {
 					fmt.Println(n, " bytes sent to playerId:", playerId)
 				}
 			case CONNECT:
-				command.PlayerId = nextPlayerId()
+				spawnPlayerId := nextPlayerId()
+				command.PlayerId = spawnPlayerId
 				players[command.PlayerId] = addr
-				n, err := sendCommand(*command, ServerConn, addr)
-				if err != nil {
-					fmt.Println("Error sending connect: ", err)
+
+				// Spawn connecting player at all clients
+				for playerId, playerAddr := range players {
+					if playerId == spawnPlayerId {
+						command.CommandType = SPAWN_LOCAL
+					} else {
+						command.CommandType = SPAWN_REMOTE
+					}
+					n, err := sendCommand(*command, ServerConn, playerAddr)
+					if err != nil {
+						fmt.Println("Error sending local spawn: ", err)
+					} else {
+						fmt.Println(n, " bytes sent to playerId:", spawnPlayerId)
+					}
 				}
-				fmt.Println(n, " bytes sent to ", addr)
+
+				// spawn other players at new connection
+				command.CommandType = SPAWN_REMOTE
+				for playerId, _ := range players {
+					if playerId == spawnPlayerId {
+						continue
+					}
+					command.PlayerId = playerId
+					n, err := sendCommand(*command, ServerConn, addr)
+					if err != nil {
+						fmt.Println("Error sending remote spawn: ", err)
+					} else {
+						fmt.Println(n, " bytes sent to playerId:", playerId)
+					}
+				}
 			}
 		}
 		if err != nil {
